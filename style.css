@@ -6,24 +6,88 @@ body {
     background: linear-gradient(135deg, #8a2be2, #4169e1);
     min-height: 100vh;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
-.download-btn {
-    background: linear-gradient(to right, #8b5cf6, #6366f1);
-    transition: all 0.3s ease;
-}
-
-.download-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-}
-
-.history-item {
+/* 🔹 History Section */
+#history-section {
+    max-height: 450px;
+    overflow-y: auto;
+    padding: 15px;
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
-    transition: all 0.3s ease;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+/* 🔹 History Items */
+.history-item {
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    transition: 0.3s ease-in-out;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
 }
 
 .history-item:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* 🔹 Scrollbar Styling */
+#history-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+#history-list::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+
+/* 🔹 Progress Bar Animation */
+#progress-container {
+    margin-top: 15px;
+    width: 100%;
     background: rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+    height: 5px;
+}
+
+#progress-bar {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(to right, #8b5cf6, #6366f1);
+    transition: width 0.5s ease-in-out;
+}
+
+/* 🔹 Buttons */
+button {
+    padding: 10px 15px;
+    font-weight: bold;
+    border-radius: 8px;
+    transition: background 0.3s ease-in-out, transform 0.2s ease;
+}
+
+button:hover {
+    transform: translateY(-2px);
+}
+
+/* 🔹 Input Fields */
+input, select {
+    transition: all 0.3s ease-in-out;
+}
+
+input:focus, select:focus {
+    outline: none;
+    box-shadow: 0 0 10px rgba(138, 43, 226, 0.3);
+}
+
+/* 🔹 Fix: Ensure hidden elements are correctly hidden */
+.hidden {
+    display: none;
 }
