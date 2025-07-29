@@ -70,68 +70,109 @@ pasteBtn.addEventListener('click', async () => {
 
 // 🔹 Load History from Local Storage
 function loadHistory() {
-    const history = JSON.parse(localStorage.getItem('downloadHistory')) || [];
-    historyList.innerHTML = "";
-    
-    // Update history count
-    historyCount.textContent = history.length;
-    
-    // Show/hide empty history message
-    if (history.length === 0) {
-        emptyHistory.classList.remove('hidden');
-    } else {
-        emptyHistory.classList.add('hidden');
-    }
-
-    history.forEach((item, index) => {
-        const listItem = document.createElement('li');
-        listItem.classList.add('p-3', 'bg-white/20', 'rounded-lg', 'text-white', 'flex', 'justify-between', 'items-start', 'cursor-pointer', 'hover:bg-white/30', 'transition-all');
-
-        // Format quality for display
-        const qualityDisplay = `${item.quality} kbps`;
+    try {
+        const history = JSON.parse(localStorage.getItem('downloadHistory')) || [];
+        historyList.innerHTML = "";
         
-        // Sanitize URL for safety when creating onclick handlers
-        const safeUrl = item.url.replace(/"/g, '&quot;');
+        // Update history count
+        historyCount.textContent = history.length;
+        
+        // Show/hide empty history message
+        if (history.length === 0) {
+            emptyHistory.classList.remove('hidden');
+        } else {
+            emptyHistory.classList.add('hidden');
+        }
 
-        listItem.innerHTML = `
-            <div class="flex-1 mr-2" onclick="reconvert('${safeUrl}', '${item.quality}')">
-                <div class="font-medium line-clamp-1">${item.title}</div>
-                <div class="text-xs text-gray-300 mt-1 flex items-center">
-                    <i class="fas fa-music mr-1"></i> ${qualityDisplay}
+        // Filter out invalid history items
+        const validHistory = history.filter(item => 
+            item && 
+            typeof item === 'object' && 
+            item.url && 
+            typeof item.url === 'string' &&
+            item.title &&
+            item.quality
+        );
+
+        // If filtered history is different from original, save it back
+        if (validHistory.length !== history.length) {
+            localStorage.setItem('downloadHistory', JSON.stringify(validHistory));
+        }
+
+        validHistory.forEach((item, index) => {
+            const listItem = document.createElement('li');
+            listItem.classList.add('p-3', 'bg-white/20', 'rounded-lg', 'text-white', 'flex', 'justify-between', 'items-start', 'cursor-pointer', 'hover:bg-white/30', 'transition-all');
+
+            // Format quality for display
+            const qualityDisplay = `${item.quality} kbps`;
+            
+            // Sanitize URL for safety when creating onclick handlers
+            const safeUrl = item.url.replace(/"/g, '&quot;');
+
+            listItem.innerHTML = `
+                <div class="flex-1 mr-2" onclick="reconvert('${safeUrl}', '${item.quality}')">
+                    <div class="font-medium line-clamp-1">${item.title}</div>
+                    <div class="text-xs text-gray-300 mt-1 flex items-center">
+                        <i class="fas fa-music mr-1"></i> ${qualityDisplay}
+                    </div>
                 </div>
-            </div>
-            <button class="text-red-400 hover:text-red-300 p-1" onclick="deleteHistory(${index})">
-                <i class="fas fa-trash-alt"></i>
-            </button>
-        `;
+                <button class="text-red-400 hover:text-red-300 p-1" onclick="deleteHistory(${index})">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            `;
 
-        historyList.appendChild(listItem);
-    });
+            historyList.appendChild(listItem);
+        });
+    } catch (error) {
+        console.error('Error loading history:', error);
+        // Clear history if corrupted
+        localStorage.removeItem('downloadHistory');
+        historyCount.textContent = '0';
+        historyList.innerHTML = '';
+        emptyHistory.classList.remove('hidden');
+    }
 }
 
 // 🔹 Save History to Local Storage
 function saveHistory(url, title, quality) {
-    const history = JSON.parse(localStorage.getItem('downloadHistory')) || [];
-    
-    // Check if this URL already exists in history
-    const existingIndex = history.findIndex(item => item.url === url && item.quality === quality);
-    if (existingIndex !== -1) {
-        // Remove the existing entry so we can add it to the top
-        history.splice(existingIndex, 1);
+    try {
+        if (!url || !title || !quality) {
+            console.warn('Attempted to save incomplete history item:', { url, title, quality });
+            return; // Don't save incomplete items
+        }
+        
+        const history = JSON.parse(localStorage.getItem('downloadHistory')) || [];
+        
+        // Check if this URL already exists in history
+        const existingIndex = history.findIndex(item => 
+            item && item.url === url && item.quality === quality
+        );
+        
+        if (existingIndex !== -1) {
+            // Remove the existing entry so we can add it to the top
+            history.splice(existingIndex, 1);
+        }
+        
+        // Add new entry at the beginning of the array
+        history.unshift({ 
+            url, 
+            title, 
+            quality, 
+            timestamp: Date.now() 
+        });
+        
+        // Limit history to 20 items
+        if (history.length > 20) {
+            history.pop();
+        }
+        
+        localStorage.setItem('downloadHistory', JSON.stringify(history));
+        loadHistory();
+        
+        showToast('Added to download history', 'success');
+    } catch (error) {
+        console.error('Error saving to history:', error);
     }
-    
-    // Add new entry at the beginning of the array
-    history.unshift({ url, title, quality, timestamp: Date.now() });
-    
-    // Limit history to 20 items
-    if (history.length > 20) {
-        history.pop();
-    }
-    
-    localStorage.setItem('downloadHistory', JSON.stringify(history));
-    loadHistory();
-    
-    showToast('Added to download history', 'success');
 }
 
 // 🔹 Delete Single History Item
@@ -264,7 +305,12 @@ function processVideoUrl() {
                 "x-rapidapi-host": "youtube-v31.p.rapidapi.com"
             }
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.items && data.items.length > 0) {
                 const videoInfo = data.items[0];
@@ -274,14 +320,20 @@ function processVideoUrl() {
                 // Parse ISO 8601 duration format
                 let duration = "Unknown";
                 if (videoInfo.contentDetails && videoInfo.contentDetails.duration) {
-                    const isoDuration = videoInfo.contentDetails.duration;
-                    const match = isoDuration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
-                    
-                    const hours = match[1] ? parseInt(match[1].replace('H', '')) : 0;
-                    const minutes = match[2] ? parseInt(match[2].replace('M', '')) : 0;
-                    const seconds = match[3] ? parseInt(match[3].replace('S', '')) : 0;
-                    
-                    duration = formatDuration(hours * 3600 + minutes * 60 + seconds);
+                    try {
+                        const isoDuration = videoInfo.contentDetails.duration;
+                        const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+                        
+                        if (match) {
+                            const hours = match[1] ? parseInt(match[1]) : 0;
+                            const minutes = match[2] ? parseInt(match[2]) : 0;
+                            const seconds = match[3] ? parseInt(match[3]) : 0;
+                            
+                            duration = formatDuration(hours * 3600 + minutes * 60 + seconds);
+                        }
+                    } catch (durationError) {
+                        console.error('Error parsing duration:', durationError);
+                    }
                 }
                 
                 // Update UI with video info
@@ -471,6 +523,19 @@ function preloadFontAwesomeIcons() {
 // 🔹 Initialize the application
 function initApp() {
     try {
+        // Add missing favicon to prevent 404 requests
+        if (!document.querySelector('link[rel="icon"]')) {
+            const favicon = document.createElement('link');
+            favicon.rel = 'icon';
+            favicon.type = 'image/png';
+            favicon.href = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAB+ElEQVR4Ae2WA6wcQRSGb23btm3btm3btm3btm3b9m7vN810kp2ZndmZbJO7yZfsdvr/Z/7XGTaR+M9/bASwCKBg8IkNgV3ADaBvMAnPBu4BP4AzQL1gEN8IPAf+JOEj0C8QxecBV4GkK/4bOAiUdFt8FfAEJfEDGOim+CzgBNBxk+NAPrfE+wAvUfMNmO+GeGvgM/6bG0BTp8Szgf0YMw+ADk6JlwDuo2ceA82dEM8PnEM/nAXyORG+isiYpUAGu+KjgN8YNx+ANnaENwOvMXGTEmhjRbgscA4TP0+BsmbFM4AYDIwvwEAz4iOAX5gccx+oYlR8BvCBwHkA5DYingO4TGD9AAYbEe8LfCMwYoHKqYlPBN4SeJ+AzimJTwfeE5h3gLrJiTcF3hDYj4D6/sRXAB8J/FigVaLiOYBLmDizgPTxic8HvmLiJhaoFZ/4VswcQ7MbSOtLfDxWzS0gtZd4fuAq+ucFUNpLfDX65zKQ3VO8JvAU/fMQqOElvhF4g/75DnTxEI8CfqJ/XgAtPcSPos8UAJk8xNehzywA0niIr0afWQ6k4hFfhD5zHkjHIz4OfWY/kJZHfCT6zC0gI494H/SZGCArj3gXM3vCREoA3QHCPpYQCmUBsACxC4+FQqESALlTupcEUCg0LSXPSPzn3+YvGwRExcMgBnEAAAAASUVORK5CYII=';
+            document.head.appendChild(favicon);
+        }
+
+        // Clear any existing error messages
+        const existingErrors = document.querySelectorAll('.error-message');
+        existingErrors.forEach(el => el.remove());
+        
         // Load download history
         loadHistory();
         
@@ -483,16 +548,18 @@ function initApp() {
         };
         
         // Handle thumbnail load errors
-        thumbnail.onerror = () => {
+        thumbnail.onerror = (e) => {
+            console.log('Thumbnail load error:', e);
             thumbnail.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiM2NjY2NjYiLz48dGV4dCB4PSI1MCIgeT0iNTAiIGZvbnQtc2l6ZT0iMTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGFsaWdubWVudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0ibW9ub3NwYWNlLCBzYW5zLXNlcmlmIiBmaWxsPSIjZmZmZmZmIj5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=';
             thumbnail.classList.remove('shimmer');
-            console.log('Thumbnail load error, using placeholder');
         };
         
-        // Welcome toast
+        // Welcome toast with delay to ensure DOM is ready
         setTimeout(() => {
-            showToast('Welcome to YouTube MP3 Converter! 🎵', 'info', 5000);
-        }, 1000);
+            if (document.body.contains(toast)) {
+                showToast('Welcome to YouTube MP3 Converter! 🎵', 'info', 5000);
+            }
+        }, 1500);
         
         // Preload icons
         preloadFontAwesomeIcons();
@@ -503,23 +570,60 @@ function initApp() {
             scrollableElement.addEventListener('scroll', () => {}, { passive: true });
         }
         
-        // Prevent unnecessary network requests by handling all external URL errors
+        // Create a global error handler to catch and fix common issues
         window.addEventListener('error', function(event) {
-            // Check if the error is for an image, script, or favicon
-            if (event.target.tagName === 'IMG' || 
+            console.log('Global error caught:', event.error);
+            
+            // Handle resource loading errors
+            if (event.target && (
+                event.target.tagName === 'IMG' || 
                 event.target.tagName === 'SCRIPT' || 
                 event.target.rel === 'icon' || 
-                event.target.rel === 'shortcut icon') {
-                // Prevent the browser from making the request
+                event.target.rel === 'shortcut icon')) {
+                
+                // Prevent default error behavior
                 event.preventDefault();
-                console.log('Prevented error for resource:', event.target.src || event.target.href);
+                
+                // Log the prevented error
+                console.log('Prevented resource error for:', event.target.src || event.target.href);
+                
+                // For images, replace with placeholder
+                if (event.target.tagName === 'IMG') {
+                    event.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiM2NjY2NjYiLz48dGV4dCB4PSI1MCIgeT0iNTAiIGZvbnQtc2l6ZT0iMTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGFsaWdubWVudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0ibW9ub3NwYWNlLCBzYW5zLXNlcmlmIiBmaWxsPSIjZmZmZmZmIj5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=';
+                }
+                
+                return true;
             }
         }, true);
+        
+        // Check for CORS issues with the YouTube API
+        const testCORS = () => {
+            fetch('https://youtube-v31.p.rapidapi.com/search?part=snippet&maxResults=1&q=test', {
+                method: "GET",
+                headers: {
+                    "x-rapidapi-key": "af04bdf1d7mshc9dda69ae5365f2p146731jsn2458b96f620c", 
+                    "x-rapidapi-host": "youtube-v31.p.rapidapi.com"
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`API test failed: ${response.status}`);
+                }
+                console.log('API connection test: OK');
+            })
+            .catch(error => {
+                console.warn('API connection test failed:', error);
+            });
+        };
+        
+        // Run API test after a short delay
+        setTimeout(testCORS, 2000);
+        
     } catch (error) {
         console.error('Application initialization error:', error);
         // Show error in UI to notify user
         const errorMessage = document.createElement('div');
-        errorMessage.className = 'fixed top-0 left-0 right-0 bg-red-500 text-white p-4 text-center';
+        errorMessage.className = 'fixed top-0 left-0 right-0 bg-red-500 text-white p-4 text-center error-message';
         errorMessage.textContent = 'Application initialization error. Please refresh the page.';
         document.body.appendChild(errorMessage);
     }
@@ -528,7 +632,8 @@ function initApp() {
 // Load app when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     try {
-        initApp();
+        // Add a small delay to ensure DOM is fully loaded
+        setTimeout(initApp, 100);
     } catch (error) {
         console.error('Fatal application error:', error);
     }
